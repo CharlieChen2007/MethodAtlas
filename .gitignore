@@ -1,0 +1,24 @@
+node_modules/
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+
+.env
+.env*.local
+
+# ⚠️ 随包交付密钥用的文件名（见 tools/package-delivery.ps1 的 -IncludeRealEnv）。
+#    它同样**含真密钥**，绝不能进仓库：即使随后删掉文件，git 历史仍能翻出原文。
+#    单独列一行，避免有人 `git add -A` 时把它带进去。
+_local.env
+
+# SQLite 数据库与上传的 PDF 不入库
+*.db
+*.db-journal
+storage/
+
+.DS_Store
+*.log
+
+# 本地验收脚本会临时造数据，跑完应清理；保留脚本本身

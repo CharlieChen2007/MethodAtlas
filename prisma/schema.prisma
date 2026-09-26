@@ -1,0 +1,351 @@
+// ============================================================================
+// MethodAtlas —— 数据模型 v1.1
+//
+// 重要说明（SQLite 兼容性）：
+//   1. SQLite 不支持 Prisma 原生 enum，所有枚举字段用 String 存储，
+//      取值范围在注释中标注，并在 src/lib/enums.ts 定义 TS 常量做应用层校验。
+//   2. SQLite 对 Json 类型支持有限，所有结构化字段用 String 存 JSON 字符串，
+//      应用层做 JSON.parse / JSON.stringify。
+//   —— 将来迁移到 Postgres 时，可把 String 改回 enum / Json。
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ===================== Project & Paper =====================
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  papers         Paper[]
+  researchDebts  ResearchDebt[]
+  candidateIdeas CandidateIdea[]
+}
+
+model Paper {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title     String
+  authors   String   @default("[]") // JSON array string: ["Author One", "Author Two"]
+  year      Int?
+  venue     String?
+  pdfPath   String // 相对路径，如 storage/papers/<id>/paper.pdf
+
+  // status: UPLOADED | PARSED | DNA_EXTRACTED | FAILED
+  status    String   @default("UPLOADED")
+
+  rawText   String? // 解析后的全文（JSON array string of paragraphs）
+  abstract  String?
+  pageCount Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  methodDNA       MethodDNA?
+  evidenceRefs    EvidenceRef[]
+  sourceRelations Relation[]   @relation("SourcePaper")
+  targetRelations Relation[]   @relation("TargetPaper")
+  debtSources     DebtSource[]
+  attempts        Attempt[]
+
+  @@index([projectId])
+}
+
+// ===================== EvidenceRef（简化版：只挂 Paper） =====================
+
+model EvidenceRef {
+  id      String @id @default(cuid())
+  paperId String
+  paper   Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  // source: PAPER_FACT | LLM_SYNTHESIS | LLM_INFERENCE
+  source String @default("PAPER_FACT")
+
+  // status: CONFIRMED | UNCERTAIN | INSUFFICIENT
+  // INSUFFICIENT 的证据不允许被任何对象的 evidenceIds 引用（Service 层校验）
+  status String @default("UNCERTAIN")
+
+  quote        String? // 论文原文片段
+  section      String? // abstract | method | experiment | limitation | ...
+  pageNumber   Int?
+  modelSummary String? // source 为 LLM_SYNTHESIS / LLM_INFERENCE 时模型给出的总结
+  confidence   Float   @default(0.5) // 0~1
+
+  createdAt DateTime @default(now())
+
+  @@index([paperId])
+}
+
+// ===================== Method DNA =====================
+
+model MethodDNA {
+  id      String @id @default(cuid())
+  paperId String @unique
+  paper   Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  task          String @default("")
+  problem       String @default("")
+  coreMechanism String @default("")
+
+  training          String? // JSON string
+  inference         String? // JSON string
+  computationalCost String?
+  limitations       String  @default("[]") // JSON array string
+
+  evidenceIds      String @default("[]") // JSON array of all EvidenceRef.id (legacy + aggregate)
+  fieldEvidenceIds String @default("{}") // JSON object: { task: [...], problem: [...], ... }
+  evidenceStatus   String @default("UNCERTAIN") // CONFIRMED | UNCERTAIN | INSUFFICIENT
+
+  // 抽取时因原文未说明而留空的字段说明，JSON array of string
+  uncertainties String @default("[]")
+
+  blocks          MethodBlock[]
+  surgeries       Surgery[]
+  sourceRelations Relation[]     @relation("SourceMethod")
+  targetRelations Relation[]     @relation("TargetMethod")
+}
+
+model MethodBlock {
+  id       String     @id @default(cuid())
+  methodId String
+  method   MethodDNA  @relation(fields: [methodId], references: [id], onDelete: Cascade)
+
+  name String
+
+  // type: ENCODER | DECODER | ATTENTION | LOSS | REGULARIZATION | SAMPLING
+  //       | PRETRAIN | FINETUNE | AUGMENTATION | ARCHITECTURE | POSTPROCESS | OTHER
+  type String @default("OTHER")
+
+  description  String  @default("")
+  role         String  @default("")
+  dependencies String  @default("[]") // JSON array of MethodBlock.id
+  params       String? // JSON string
+
+  // 结构表达（P7-0）：模块所属方法阶段 + 阶段内顺序。
+  // 顺序信息可从论文章节顺序可靠读出；依赖关系（dependencies）当前无数据支撑，不用于绘制结构边。
+  // stage 取值：PROBLEM | INPUT | PREPROCESSING | CORE_METHOD | TRAINING | INFERENCE | EVALUATION
+  stage String @default("CORE_METHOD")
+  order Int    @default(0)
+
+  evidenceIds    String @default("[]")
+  evidenceStatus String @default("UNCERTAIN")
+
+  surgeryLogs SurgeryLog[]
+
+  @@index([methodId])
+}
+
+// ===================== Surgery（方法手术，无副作用模拟） =====================
+
+model Surgery {
+  id       String     @id @default(cuid())
+  methodId String
+  method   MethodDNA  @relation(fields: [methodId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String   @default("")
+  createdAt   DateTime @default(now())
+
+  // JSON string: 结构化输出（预期影响、不确定性、相关证据）
+  result String?
+
+  // verdict: PLAUSIBLE | RISKY | INFEASIBLE | INSUFFICIENT_EVIDENCE
+  verdict String?
+
+  evidenceIds    String @default("[]")
+  evidenceStatus String @default("UNCERTAIN")
+
+  logs SurgeryLog[]
+
+  @@index([methodId])
+}
+
+model SurgeryLog {
+  id        String   @id @default(cuid())
+  surgeryId String
+  surgery   Surgery  @relation(fields: [surgeryId], references: [id], onDelete: Cascade)
+
+  blockId String
+  block   MethodBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  // action: REMOVE | REPLACE | DISABLE
+  action String @default("REMOVE")
+
+  @@index([surgeryId])
+}
+
+// ===================== Evolution（技术演进：能力连接器 + 比赛要求） =====================
+
+model Relation {
+  id        String @id @default(cuid())
+  projectId String
+
+  sourcePaperId  String
+  sourcePaper    Paper     @relation("SourcePaper", fields: [sourcePaperId], references: [id], onDelete: Cascade)
+  sourceMethodId String
+  sourceMethod   MethodDNA @relation("SourceMethod", fields: [sourceMethodId], references: [id], onDelete: Cascade)
+
+  targetPaperId  String
+  targetPaper    Paper     @relation("TargetPaper", fields: [targetPaperId], references: [id], onDelete: Cascade)
+  targetMethodId String
+  targetMethod   MethodDNA @relation("TargetMethod", fields: [targetMethodId], references: [id], onDelete: Cascade)
+
+  // type: INHERIT | IMPROVE | REPLACE | BRANCH | COMBINE
+  type String @default("IMPROVE")
+
+  reason     String @default("")
+  confidence Float  @default(0.5) // 0~1
+
+  evidenceIds    String @default("[]")
+  evidenceStatus String @default("UNCERTAIN")
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+}
+
+// ===================== Research Debt =====================
+
+model ResearchDebt {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String @default("")
+
+  // category: GENERALIZATION | COMPUTATION | DATA | INTERPRETABILITY
+  //           | ROBUSTNESS | EVALUATION | THEORY | OTHER
+  category String @default("OTHER")
+
+  currentStatus   String @default("")
+  occurrenceCount Int    @default(1) // 在多篇论文中出现的次数
+
+  evidenceIds    String @default("[]")
+  evidenceStatus String @default("UNCERTAIN")
+
+  sources  DebtSource[]
+  attempts Attempt[]
+  ideas    CandidateIdeaDebt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+model DebtSource {
+  id      String       @id @default(cuid())
+  debtId  String
+  debt    ResearchDebt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  paperId String
+  paper   Paper        @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  context String @default("") // 这篇论文里如何描述该问题
+
+  evidenceIds    String @default("[]")
+  evidenceStatus String @default("UNCERTAIN")
+
+  // 这条数据的来源：mock（本地启发式）还是真实模型名。
+  //
+  // 为什么必须单独存一个字段（而不是靠 evidenceStatus 推）：
+  // DebtSource 与 Attempt 的 evidenceStatus 恒为 UNCERTAIN
+  // （见 research-debt.ts 的写入逻辑），它表达的是"单条证据是否
+  // 逐句核对过"，与"这段文字是规则拼的还是模型写的"无关。
+  //
+  // 而 panel 的「真归纳 vs 规则归纳」分流必须知道数据来源：
+  //   · mock 的 context 是英文原句 → 必须走规则归纳
+  //   · 真模型的 context 本来就是中文 → 原样使用，不能再套规则
+  // 靠"文本是不是中文"猜是不可靠的（英文论文标题、中英混排都会误判）。
+  // 所以把来源在写入时就固化下来，读侧只做判断、不做推测。
+  provider String @default("")
+
+  @@index([debtId])
+  @@index([paperId])
+}
+
+model Attempt {
+  id      String       @id @default(cuid())
+  debtId  String
+  debt    ResearchDebt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  paperId String
+  paper   Paper        @relation(fields: [paperId], references: [id], onDelete: Cascade)
+
+  description String @default("")
+  outcome     String @default("") // 成功 / 部分成功 / 失败 / 引入新问题
+
+  evidenceIds    String @default("[]")
+  evidenceStatus String @default("UNCERTAIN")
+
+  // 数据来源：mock / 真实模型名。理由同 DebtSource.provider。
+  provider String @default("")
+
+  @@index([debtId])
+  @@index([paperId])
+}
+
+// ===================== Candidate Idea + Crash Test =====================
+
+model CandidateIdea {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String  @default("")
+  fromBlockIds String @default("[]") // JSON array of MethodBlock.id
+
+  evidenceIds    String @default("[]")
+  evidenceStatus String @default("UNCERTAIN")
+
+  fromDebts CandidateIdeaDebt[]
+  crashTest CrashTest?
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+}
+
+model CandidateIdeaDebt {
+  ideaId String
+  idea   CandidateIdea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  debtId String
+  debt   ResearchDebt  @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  why String @default("") // 为什么这个 idea 能解决这个 debt
+
+  @@id([ideaId, debtId])
+}
+
+model CrashTest {
+  id    String        @id @default(cuid())
+  ideaId String       @unique
+  idea  CandidateIdea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  noveltyCheck       String @default("[]") // JSON array of Finding
+  blockConflictCheck String @default("[]")
+  dataRequirement    String @default("[]")
+  computeRequirement String @default("[]")
+  experimentalDesign String @default("")
+  findings           String @default("[]")
+
+  // overallVerdict: PROMISING | RISKY | LIKELY_EXISTS | INFEASIBLE | INSUFFICIENT_EVIDENCE
+  overallVerdict String @default("INSUFFICIENT_EVIDENCE")
+
+  evidenceIds    String @default("[]")
+  evidenceStatus String @default("UNCERTAIN")
+
+  createdAt DateTime @default(now())
+}

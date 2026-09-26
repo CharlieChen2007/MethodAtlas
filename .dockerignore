@@ -1,0 +1,38 @@
+# ── Docker 构建忽略 ──
+#
+# 目的有两个，第二个比第一个重要得多：
+#   1) 别把 node_modules / .next 塞进构建上下文（慢，而且镜像里要重新装）
+#   2) **别让 .env 进构建上下文** —— 一旦被 `COPY . .` 带进某一层，
+#      即使后面在同一个 Dockerfile 里删掉，密钥仍留在**那一层的历史**里，
+#      推镜像就等于泄露。所以从入口就不给它。
+#
+# 注意：storage/ 与 prisma/dev.db **不**忽略 ——
+#   镜像要自带演示数据（评委打开链接就有内容）。
+#   但 prisma/dev.db 是"种子"，运行时的库在 /data（见 docker-entrypoint.sh）。
+
+node_modules
+.next
+out
+build
+
+# 密钥与本地覆盖：绝对不能进镜像
+.env
+.env.local
+.env.*.local
+
+# 编辑器/系统噪声
+.vscode
+.idea
+.DS_Store
+*.log
+
+# 本机验收产物
+shots*
+suite-logs
+__pycache__
+*.pyc
+tsconfig.tsbuildinfo
+
+# git 自身
+.git
+.gitignore

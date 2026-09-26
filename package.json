@@ -1,0 +1,46 @@
+{
+  "name": "methodatlas",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/run-next.mjs dev",
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/run-next.mjs start",
+    "db:push": "node scripts/prisma-cli.mjs push",
+    "db:studio": "node scripts/prisma-cli.mjs studio",
+    "db:reset": "node scripts/db-reset.mjs",
+    "seed": "node scripts/seed-demo.mjs",
+    "seed:reset": "node scripts/seed-demo.mjs --reset",
+    "seed:check": "node scripts/seed-demo.mjs --check",
+    "reseed:ips": "node scripts/reseed-ips.mjs",
+    "reseed:ips:check": "node scripts/reseed-ips.mjs --check",
+    "maint:names": "node --experimental-strip-types scripts/reseed-roles.mjs",
+    "maint:clear-ideas": "node scripts/clear-ideas.mjs",
+    "reset:user-data": "node scripts/reset-user-data.mjs",
+    "prepack": "node scripts/reset-user-data.mjs"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0",
+    "next": "14.2.33",
+    "pdfjs-dist": "^6.3.289",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/react": "18.3.17",
+    "@types/react-dom": "18.3.5",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.49",
+    "prisma": "5.22.0",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.7.2"
+  }
+}

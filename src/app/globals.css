@@ -1,0 +1,398 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-white text-ink;
+    /* 字体栈（P18 问题 1 统一）：英文走 Inter，中文回退系统字体。
+       不用 next/font/google —— 构建环境无外网，会抓取失败。 */
+    font-family:
+      Inter, 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system,
+      BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans GB', 'Helvetica Neue',
+      Helvetica, Arial, sans-serif;
+  }
+
+  /* 尊重系统的"减少动效"设置。科研工具是用来长时间盯着看的，
+     动效如果关不掉就是负担，不是体验。 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* 卡片基元（P7 起简化）。
+     全站只剩 3 处非画布页面还在用卡片（项目列表 / 证据抽屉 / 空态）。
+     原先这里带 `shadow-block` 投影以制造层次，但新的视觉规范明确
+     「几乎不用阴影、靠间距与字重表达层次」，所以去掉投影与 hover 加深，
+     只保留圆角 + 浅边框。
+
+     动效一并去掉 —— 卡片本身不可点击，hover 有反馈反而是误导。 */
+  .block-card {
+    @apply rounded-block border border-line bg-white;
+  }
+
+  /* 证据抽屉 / 提示条的进场：只做透明度 + 极小位移，200ms 内结束 */
+  @keyframes ma-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .ma-fade-in {
+    animation: ma-fade-in 0.18s ease-out both;
+  }
+
+  /* ── P14 死代码清理 ──
+     ma-panel-up（底部面板滑入）与 ma-progress / ma-progress-bar（进度光条）
+     全项目零引用 —— 前者被 BottomPanel 的 height 过渡（160ms）取代，
+     后者被"进行时文案 + ma-pulse 呼吸点"取代（产品红线：不做假进度）。
+     留着只会误导后来者以为还有面板滑入/进度条两套动效在用。 */
+
+  /* ═══════════ P11 问题 4：五态可区分动画 ═══════════
+     目标：生成中 / 生成完成 / 运行中 / 运行完成 / 重置 五种状态
+     在 150–300ms 内给出**可截图区分**的视觉差异。
+     风格纪律：科研工具 —— 只有透明度与 ≤4px 位移，无弹跳、无缩放过冲；
+     所有一次性动画（除 ma-pulse 呼吸外）播完即停。
+     prefers-reduced-motion 已在上方统一关闭动效。 */
+
+  /**
+   * ① 视图切换：**只淡入，不位移**（200ms）。
+   *
+   * 由 LabShell 的 key={view} remount 触发 —— 换视图 = 新内容进场。
+   *
+   * ── P20 改版：把位移去掉了 ──
+   * 原版是"淡入 + 上移 4px（220ms）"。产品本轮明确要求视图切换
+   * 「整个视图内容淡入（opacity 0 → 1，200ms），**不要位移**」：
+   * 换视图时整块画布上移几像素，观感上像"页面在动"，而这里要引导的
+   * 注意力是"内容换了"，不是"内容滑进来了"。所以只留透明度。
+   * 旧类名 .ma-view-in 保留为别名，避免调用点漏改（历史断言也认它）。
+   */
+  @keyframes ma-view-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .ma-view-fade,
+  .ma-view-in {
+    animation: ma-view-fade 0.2s ease-out both;
+  }
+
+  /* ② 生成中 / 运行中：圆点呼吸（1.2s 循环）。
+     只动透明度 —— 转圈是"假进度"，呼吸是"还活着"。 */
+  @keyframes ma-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .ma-pulse {
+    animation: ma-pulse 1.2s ease-in-out infinite;
+  }
+
+  /* ③ 生成完成 / 运行完成：绿色反馈条短闪（240ms）。
+     背景亮度从 14% 叠色落回常规 6% —— "刚亮过一下"的完成感。 */
+  @keyframes ma-ok-flash {
+    0% {
+      background-color: rgb(210 247 220);
+      border-color: rgba(22, 163, 74, 0.9);
+    }
+    100% {
+      background-color: rgb(240 252 245);
+      border-color: rgba(22, 163, 74, 0.33);
+    }
+  }
+
+  .ma-ok-flash {
+    animation: ma-ok-flash 0.24s ease-out both;
+  }
+
+  /* ④ 失败：一次 3px 左右位移（240ms）——出错要有"被挡了一下"的感觉，
+     但不晃动整个页面。 */
+  @keyframes ma-shake-x {
+    0% {
+      transform: translateX(0);
+    }
+    30% {
+      transform: translateX(-3px);
+    }
+    65% {
+      transform: translateX(3px);
+    }
+    100% {
+      transform: translateX(0);
+    }
+  }
+
+  .ma-shake-x {
+    animation: ma-shake-x 0.24s ease-in-out both;
+  }
+
+  /* ⑤ 重置：透明度回落再回来（300ms）——"回到初始"的视觉回执。
+     挂在画布右上角的重置簇上（CanvasStage 的 anim-reset class）。 */
+  @keyframes ma-reset-dip {
+    0% {
+      opacity: 1;
+    }
+    40% {
+      opacity: 0.25;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+
+  .anim-reset {
+    animation: ma-reset-dip 0.3s ease-in-out both;
+  }
+
+  /* ⑥ 浮动卡片进场（击穿测试卡片 / 上下文横条等 absolute 层）：
+     淡入 + 2px 下落，180ms —— 比视图切换更轻，因为它只是覆盖层。 */
+  @keyframes ma-card-in {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .ma-card-in {
+    animation: ma-card-in 0.18s ease-out both;
+  }
+
+  /* ⑦ 生成完成：产出概览块绿色短闪（260ms）。
+     与 ActionBar 的 ma-ok-flash 同一语义（完成），只是对象是概览块。 */
+  @keyframes ma-gen-flash {
+    0% {
+      background-color: rgb(220 252 231);
+      border-color: rgb(34 197 94);
+    }
+    100% {
+      background-color: rgb(255 255 255);
+      border-color: rgb(134 239 172);
+    }
+  }
+
+  .ma-gen-flash {
+    animation: ma-gen-flash 0.26s ease-out both;
+  }
+
+  /* ⑧ 击穿测试卡片运行完成：蓝色结果徽标短闪。
+     挂在 CrashRunCard 的标题计数上（运行后 refreshData 重新渲染时播一次）。 */
+  @keyframes ma-run-done {
+    0% {
+      background-color: rgb(219 234 254);
+      color: rgb(29 78 216);
+    }
+    100% {
+      background-color: transparent;
+      color: inherit;
+    }
+  }
+
+  .ma-run-done {
+    animation: ma-run-done 0.28s ease-out both;
+    border-radius: 4px;
+    padding: 1px 4px;
+  }
+
+  /* ═══════════ P20：克制的"注意力引导"动效 ═══════════
+     原则（产品本轮口径）：
+       · 动效服务于注意力引导，不是装饰
+       · 200–400ms，绝不超过 500ms
+       · 缓动 ease-out 或 cubic-bezier(0.16, 1, 0.3, 1)
+       · 位移 8–16px，不做大距离
+       · 透明度 0→1 与位移配合
+     禁止（本轮明确排除，勿加）：画布节点持续浮动 / 每个节点入场弹跳 /
+     连线生成动画 / 数字滚动 / 页面切换大幅位移。
+     prefers-reduced-motion 已在文件开头统一关闭所有 animation/transition。 */
+
+  /* ── ⑨ 列表交错出场 ──
+     用途：研究债务列表 / 演化卡片 / 击穿卡片 / 论文列表 / 对话气泡。
+     做法：:nth-child 逐项 +70ms。
+
+     ⚠️ 延迟必须**封顶在 100ms**，否则整串收敛时间会突破 500ms 红线：
+       实测第 4 项 = 210ms 延迟 + 400ms 动画 = 610ms > 500ms。
+       所以第 1 项 0 / 第 2 项 70 / 第 3 项 140，**第 4 项起一律 100ms**：
+         · 前 3 项仍是规约要求的"逐项 60–80ms"节奏，交错感清楚；
+         · 第 4 项起不再线性推迟 —— 视觉上后段几乎同时落位，
+           而"列表在依次出现"这个读感已经建立起来了；
+         · 最长收敛 = 100ms + 400ms = 500ms，正好压在红线内。
+     这个取舍是刻意的：宁可后段收敛快一点，也不让整串拖到 500ms 以上。 */
+  @keyframes ma-slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .ma-list-item {
+    animation: ma-slide-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  .ma-list-item:nth-child(1) { animation-delay: 0ms; }
+  .ma-list-item:nth-child(2) { animation-delay: 70ms; }
+  .ma-list-item:nth-child(3) { animation-delay: 100ms; }
+  .ma-list-item:nth-child(n + 4) { animation-delay: 100ms; }
+
+  /* ── ⑨b 演化时间线：从上到下交错滑入（P21）──
+     产品对本视图的要求是"时间线卡片从上到下交错滑入"：
+     位移取 14px（仍在 8–16px 内），步进 60ms，延迟由行内 style 给
+     （因为行的顺序来自年份排序，用 :nth-child 也可以，但行内更直观）。
+     缓动仍是 ease-out —— 时间线是"往下读"的动线，不需要回弹。 */
+  @keyframes ma-timeline-in {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .ma-timeline-row {
+    animation: ma-timeline-in 0.32s ease-out both;
+  }
+
+  /* ── ⑨c 开场页：淡入 + logo 轻微上移（P21）──
+     logo 用 16px 上移（8–16px 上限内），文字/按钮只淡入。
+     0.36s / ease-out：这是用户看到的第一屏，稍慢一点点显得从容，
+     但仍压在 400ms 以内。 */
+  @keyframes ma-intro-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes ma-intro-logo {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .ma-intro-fade {
+    animation: ma-intro-in 0.36s ease-out both;
+  }
+
+  .ma-intro-logo {
+    animation: ma-intro-logo 0.36s ease-out both;
+  }
+
+  /* ── ⑨d 底部数据看板（P21 B 方案）──
+     两条分开，因为产品对本轮的要求是"卡片交错入场、图表只淡入"：
+       · 统计卡片 ma-dash-in：位移 8px + 淡入，延迟由行内 style 给 60ms 步进
+         （产品规范「延迟 60ms」，所以**不**复用 .ma-list-item 的 70ms）。
+         0.3s / ease-out，落在 P20 的 200–400ms 推荐区间内。
+       · 图表 ma-dash-fade：只淡入，不位移 —— 图表里的条形宽度本身有
+         300ms transition，再叠位移会读成"图在跳"。 */
+  @keyframes ma-dash-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes ma-dash-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .ma-dash-in {
+    animation: ma-dash-in 0.3s ease-out both;
+  }
+
+  .ma-dash-fade {
+    animation: ma-dash-fade 0.3s ease-out both;
+  }
+
+  /* ── ⑩ 底部面板滑出 ──
+     展开：从底部滑入（translateY(16px) → 0，300ms，弹性缓动）。
+     收起：反向。
+     为什么位移只用 16px 而不是 translateY(100%)：
+       外层 wrapper 已经在做"高度 0 ↔ PANEL_H"的真实占位动画（挤压式布局
+       必须靠真实高度变化，画布才会跟着收缩）。里面再叠一个 100% 位移，
+       两者时长不同步时会出现"面板还在动、画布已经卡住"的割裂感。
+       16px 是"从下方浮上来"的**暗示**，配合高度动画读起来就是滑出。 */
+  @keyframes ma-panel-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .ma-panel-up {
+    animation: ma-panel-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* ── ⑪ 按钮按压反馈 ──
+     按下 scale(0.98) / 松开回弹，100ms。
+     只作用在**界面按钮**上：画布上的节点按钮（CardNode / CanvasNode）
+     带 data-node，它们有"选中放大"这套自己的反馈，且拖拽画布时会误触，
+     所以显式排除。
+     用 transform 而非改 padding —— 不触发重排，只走合成层。 */
+  button:not([data-node]):not(:disabled) {
+    transition: transform 100ms ease-out;
+  }
+  button:not([data-node]):not(:disabled):active {
+    transform: scale(0.98);
+  }
+
+  /* ── ⑫ 节点选中：轻微放大（150ms）──
+     由 CardNode / CanvasNode 的 data-selected 属性驱动，避免两个组件各写一套。 */
+  [data-node] {
+    transition: transform 150ms ease-out, border-color 150ms ease-out,
+      box-shadow 150ms ease-out;
+  }
+}
