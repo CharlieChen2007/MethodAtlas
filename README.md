@@ -137,6 +137,23 @@ node scripts/llm-check.mjs
 **没有 Key 也能跑通整个链路** —— 此时会自动降级到本地 mock，且页面会如实标注
 数据来源（见下文「Mock 与真模型」）。
 
+### 关于 `sample-papers/`（容易误会，特此说明）
+
+`sample-papers/` 里的 PDF **不是当前演示语料**，而是**回归脚本的固定装置**：
+
+| 文件 | 用途 |
+|---|---|
+| `ips-1/2/3-*.pdf` | `npm run reseed:ips` 用的旧 IPS 三篇语料 |
+| `rag-2020.pdf`、`self-rag-2023.pdf` | `verify-local.py` 等验收脚本用来测「上传 → 解析」链路 |
+| `fusion-in-decoder-2020.pdf` | 同上 |
+
+当前演示库是 **8 篇 Wi-Fi 指纹数据增强论文**（见上文「演示论文库」），
+其 PDF 在 `storage/papers/<paperId>/paper.pdf`。
+
+> 所以看到 `sample-papers/` 里是别的论文**属于正常**，不要以为语料没换干净。
+> 这些文件被 `scripts/reseed-ips.mjs`、`scripts/seed-demo.mjs`、
+> `scripts/verify-local.py` 引用，**删掉会让这几个脚本失效**。
+
 ### 重新灌入演示数据（把 8 篇 Wi-Fi 指纹增强论文跑完整条链路）
 
 ```bash
